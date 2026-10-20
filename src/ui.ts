@@ -3,6 +3,9 @@ import { TEMPLATES, renderCredits, countChars, MAX_DESCRIPTION } from './templat
 import { backupFileName, serializeBackup, parseBackup, type BackupError } from './backup'
 import type { AppStorage } from './storage'
 
+const HOME_URL = 'https://tsuzuri-naoto.github.io/'
+const SOURCE_URL = 'https://github.com/tsuzuri-naoto/sozai-credit'
+
 export type AppDeps = {
   storage: AppStorage
   copy: (text: string) => Promise<boolean>
@@ -17,6 +20,65 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, testId?: string,
   if (testId) node.dataset.testid = testId
   if (text !== undefined) node.textContent = text
   return node
+}
+
+// ホームページと同じ「窓」の形のカード。上の帯にファイル名ふうのラベルを出す。
+function win(label: string, body: HTMLElement): HTMLElement {
+  const frame = element('section')
+  frame.className = 'win'
+  const bar = element('div')
+  bar.className = 'win-bar'
+  bar.setAttribute('aria-hidden', 'true')
+  bar.append(element('i'), element('i'), element('i'), element('span', undefined, label))
+  body.classList.add('win-body')
+  frame.append(bar, body)
+  return frame
+}
+
+function link(href: string, text: string): HTMLAnchorElement {
+  const node = element('a', undefined, text)
+  node.href = href
+  return node
+}
+
+function bracketed(text: string): HTMLParagraphElement {
+  const node = element('p')
+  node.className = 'eyebrow'
+  const open = element('b', undefined, '<#')
+  const close = element('b', undefined, '#>')
+  open.setAttribute('aria-hidden', 'true')
+  close.setAttribute('aria-hidden', 'true')
+  node.append(open, document.createTextNode(` ${text} `), close)
+  return node
+}
+
+function appHeader(): HTMLElement {
+  const header = element('header')
+  header.className = 'app-header'
+  const heading = element('h1', undefined, '素材クレジットメーカー')
+  const cursor = element('span')
+  cursor.className = 'cursor'
+  cursor.setAttribute('aria-hidden', 'true')
+  heading.append(cursor)
+  const lead = element('p', undefined, '配信や動画で使った素材を登録すると、概要欄に貼る権利表記をまとめて作れます。登録した内容はこのブラウザの中にだけ保存されます。')
+  lead.className = 'lead'
+  header.append(bracketed('tools / sozai-credit'), heading, lead)
+  return header
+}
+
+function appFooter(): HTMLElement {
+  const footer = element('footer')
+  footer.className = 'app-footer'
+  const links = element('p')
+  links.append(link(HOME_URL, 'ホーム'), document.createTextNode(' / '), link(SOURCE_URL, 'ソース(GitHub)'), document.createTextNode(' / MIT License'))
+  footer.append(bracketed('made by 綴 尚音'), links)
+  return footer
+}
+
+function emptyHint(): HTMLElement {
+  const hint = element('p', 'empty-hint', '素材を登録すると、ここに並びます。BOOTH の URL は、商品ページのアドレスをそのまま貼れば短く整えます。')
+  hint.className = 'hint'
+  return hint
 }
 
 function button(testId: string, text: string, action?: () => void): HTMLButtonElement {
@@ -40,7 +102,6 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   let state = deps.storage.load()
   let editingId: string | null = null
   let copyTimer: ReturnType<typeof setTimeout> | undefined
-  const heading = element('h1', undefined, '素材クレジットメーカー')
   const warning = element('p', 'storage-warning', 'この環境では登録内容を保存できません。ページを閉じると消えます。')
   warning.className = 'warning'
   warning.hidden = deps.storage.available
@@ -49,7 +110,6 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   const inputColumn = element('div', 'col-input')
   const outputColumn = element('div', 'col-output')
   const form = element('form')
-  form.className = 'card'
   form.noValidate = true
   form.append(element('h2', undefined, '素材を登録'))
 
@@ -80,12 +140,14 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   formError.hidden = true
   form.append(formActions, formError)
 
-  const listCard = element('section')
-  listCard.className = 'card'
+  const listCard = element('div')
   const listHeading = element('h2', undefined, '登録した素材')
   const itemCount = element('span', 'item-count')
+  itemCount.className = 'count'
+  listHeading.append(itemCount)
   const list = element('ul')
   list.className = 'materials'
+  const hint = emptyHint()
   const exportButton = button('export-button', '書き出し', () => {
     backupStatus.textContent = ''
     try {
@@ -109,11 +171,10 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   backupActions.append(exportButton, importButton, importInput)
   const backupStatus = element('p', 'backup-status')
   backupStatus.setAttribute('role', 'status')
-  listCard.append(listHeading, itemCount, list, backupActions, backupStatus)
-  inputColumn.append(form, listCard)
+  listCard.append(listHeading, hint, list, backupActions, backupStatus)
+  inputColumn.append(win('new-material', form), win('materials/', listCard))
 
-  const outputCard = element('section')
-  outputCard.className = 'card'
+  const outputCard = element('div')
   const templateFieldset = element('fieldset')
   templateFieldset.append(element('legend', undefined, 'テンプレ'))
   const radios = TEMPLATES.map(template => {
@@ -135,6 +196,7 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   output.readOnly = true
   output.setAttribute('aria-label', 'クレジット文')
   const charCount = element('p', 'char-count')
+  charCount.className = 'status-bar'
   const angleWarning = element('p', 'angle-warning', '「<」「>」は YouTube の概要欄に入れられません。素材名・ショップ名から外してください。')
   angleWarning.className = 'warning'
   const copyStatus = element('p', 'copy-status')
@@ -153,9 +215,9 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
     if (success) copyTimer = setTimeout(() => { copyStatus.textContent = '' }, 2000)
   })
   outputCard.append(templateFieldset, outputHeading, output, charCount, angleWarning, copyButton, copyStatus)
-  outputColumn.append(outputCard)
+  outputColumn.append(win('credits.txt', outputCard))
   columns.append(inputColumn, outputColumn)
-  root.replaceChildren(heading, warning, columns)
+  root.replaceChildren(appHeader(), warning, columns, appFooter())
 
   function clearError(): void {
     formError.textContent = ''
@@ -213,6 +275,7 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
       list.append(row)
     })
     itemCount.textContent = `${state.materials.length} 件`
+    hint.hidden = state.materials.length > 0
     exportButton.disabled = state.materials.length === 0
     radios.forEach(radio => { radio.checked = radio.value === state.templateId })
     output.value = renderCredits(state.materials, state.templateId)
