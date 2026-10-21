@@ -113,14 +113,20 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   const outputColumn = element('div', 'col-output')
   const form = element('form')
   form.noValidate = true
-  form.append(element('h2', undefined, '素材を登録'))
+  // 入力欄は .field で包んで並べる。広い画面では CSS のグリッドで 2〜3 列にする。
+  const fields = element('div')
+  fields.className = 'form-grid'
+  form.append(element('h2', undefined, '素材を登録'), fields)
 
-  function labeled<T extends HTMLElement>(testId: string, text: string, control: T, parent: HTMLElement = form): T {
+  function labeled<T extends HTMLElement>(testId: string, text: string, control: T, parent: HTMLElement = fields): T {
+    const wrapper = element('div')
+    wrapper.className = `field field-${testId.replace(/-input$/, '')}`
     const label = element('label', undefined, text)
     control.dataset.testid = testId
     control.id = testId
     label.htmlFor = control.id
-    parent.append(label, control)
+    wrapper.append(label, control)
+    parent.append(wrapper)
     return control
   }
   function textInput(testId: string, text: string, placeholder = ''): HTMLInputElement {
@@ -210,7 +216,8 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   const backupStatus = element('p', 'backup-status')
   backupStatus.setAttribute('role', 'status')
   listCard.append(listHeading, hint, useActions, list, backupActions, backupStatus)
-  inputColumn.append(win('new-material', form), win('materials/', listCard))
+  const formWindow = win('new-material', form)
+  inputColumn.append(win('materials/', listCard))
 
   const outputCard = element('div')
   const templateFieldset = element('fieldset')
@@ -267,7 +274,7 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   outputCard.append(templateFieldset, outputHeading, output, charCount, useSummary, unknownHint, angleWarning, copyButton, copyStatus)
   outputColumn.append(win('credits.txt', outputCard))
   columns.append(inputColumn, outputColumn)
-  root.replaceChildren(appHeader(), warning, columns, appFooter())
+  root.replaceChildren(appHeader(), warning, formWindow, columns, appFooter())
 
   function clearError(): void {
     formError.textContent = ''

@@ -115,7 +115,9 @@ h1 {
 }
 
 /* ---------- 窓(カード) ---------- */
+/* 上に登録フォーム(横長)、その下に「登録した素材」と「クレジット文」を並べる */
 .columns {
+  margin-top: 20px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 20px;
@@ -202,6 +204,20 @@ label, legend {
 form label:not(.toggle) {
   display: block;
   margin: 12px 0 6px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px 16px;
+}
+
+.form-grid .field {
+  min-width: 0;
+}
+
+.form-grid .field label {
+  margin: 0 0 6px;
 }
 
 input, textarea, button {
@@ -585,6 +601,20 @@ legend {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "category requirement"
+      "name shop"
+      "url url";
+  }
+
+  .field-category { grid-area: category; }
+  .field-name { grid-area: name; }
+  .field-shop { grid-area: shop; }
+  .field-url { grid-area: url; }
+  .field-requirement { grid-area: requirement; }
+
   [data-testid="col-output"] .win {
     position: sticky;
     top: 16px;
@@ -593,4 +623,18 @@ legend {
 
 [data-testid="storage-warning"] {
   margin: 0 0 16px;
+}
+
+@media (min-width: 960px) {
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1.4fr);
+    grid-template-areas:
+      "category name shop"
+      "url url requirement";
+  }
+}
+
+form input[type="text"],
+form select {
+  height: 46px;
 }
