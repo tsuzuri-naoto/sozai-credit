@@ -1,10 +1,12 @@
-import { addMaterial, updateMaterial, removeMaterial, moveMaterial, setTemplate, type AppState, type InputError } from './model'
+import { addMaterial, updateMaterial, removeMaterial, moveMaterial, setInUse, setTemplate, setHonorific, REQUIREMENTS, type AppState, type InputError, type MaterialInput, type Requirement } from './model'
 import { TEMPLATES, renderCredits, countChars, MAX_DESCRIPTION } from './templates'
 import { backupFileName, serializeBackup, parseBackup, type BackupError } from './backup'
 import type { AppStorage } from './storage'
 
 const HOME_URL = 'https://tsuzuri-naoto.github.io/'
 const SOURCE_URL = 'https://github.com/tsuzuri-naoto/sozai-credit'
+// 区分の入力候補。自由に入力もできる。配布元の表記例で多い書き方に合わせている。
+const CATEGORY_SUGGESTIONS = ['BGM', '効果音', '背景', '立ち絵', 'イラスト', '配信画面', 'フォント', '音声', 'ツール']
 
 export type AppDeps = {
   storage: AppStorage
@@ -76,7 +78,7 @@ function appFooter(): HTMLElement {
 }
 
 function emptyHint(): HTMLElement {
-  const hint = element('p', 'empty-hint', '素材を登録すると、ここに並びます。BOOTH の URL は、商品ページのアドレスをそのまま貼れば短く整えます。')
+  const hint = element('p', 'empty-hint', '素材を登録すると、ここに並びます。一度登録しておけば、次の配信では「今回使う」に印を付けるだけで使い回せます。')
   hint.className = 'hint'
   return hint
 }
@@ -90,13 +92,13 @@ function button(testId: string, text: string, action?: () => void): HTMLButtonEl
 
 const inputErrors: Record<InputError, string> = {
   'name-required': '素材名を入力してください',
-  'shop-required': 'ショップ名を入力してください',
-  'url-invalid': 'URL は http:// か https:// で始めてください',
+  'link-invalid': 'リンクは http:// か https:// で始まる URL か、@ で始まる X の名前にしてください',
 }
 const backupErrors: Record<BackupError, string> = {
   'invalid-json': '読み込めませんでした。ファイルが壊れているか、JSON ではありません。',
   'not-backup': 'このファイルは素材クレジットメーカーの書き出しファイルではありません。',
 }
+const requirementLabel = (id: Requirement) => REQUIREMENTS.find(requirement => requirement.id === id)?.label ?? ''
 
 export function mountApp(root: HTMLElement, deps: AppDeps): void {
   let state = deps.storage.load()
@@ -113,19 +115,49 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   form.noValidate = true
   form.append(element('h2', undefined, '素材を登録'))
 
-  function field(testId: string, text: string, type: string): HTMLInputElement {
+  function labeled<T extends HTMLElement>(testId: string, text: string, control: T, parent: HTMLElement = form): T {
     const label = element('label', undefined, text)
-    const input = element('input', testId)
-    input.id = testId
-    input.type = type
-    label.htmlFor = input.id
-    form.append(label, input)
-    return input
+    control.dataset.testid = testId
+    control.id = testId
+    label.htmlFor = control.id
+    parent.append(label, control)
+    return control
   }
-  const nameInput = field('name-input', '素材名', 'text')
-  const shopInput = field('shop-input', 'ショップ名', 'text')
-  const urlInput = field('url-input', 'URL(任意)', 'url')
-  urlInput.placeholder = 'https://booth.pm/ja/items/1234567'
+  function textInput(testId: string, text: string, placeholder = ''): HTMLInputElement {
+    const input = element('input')
+    input.type = 'text'
+    input.placeholder = placeholder
+    return labeled(testId, text, input)
+  }
+  const categoryInput = textInput('category-input', '区分(任意)', 'BGM / 効果音 / 背景 など')
+  const categoryOptions = element('datalist')
+  categoryOptions.id = 'category-options'
+  for (const value of CATEGORY_SUGGESTIONS) {
+    const option = element('option')
+    option.value = value
+    categoryOptions.append(option)
+  }
+  categoryInput.setAttribute('list', categoryOptions.id)
+  form.append(categoryOptions)
+  const nameInput = textInput('name-input', '素材名')
+  const shopInput = textInput('shop-input', 'ショップ・作者名(任意)')
+  const urlInput = textInput('url-input', 'リンク(任意)', 'https://booth.pm/ja/items/1234567 または @name')
+  urlInput.inputMode = 'url'
+  const requirementInput = element('select')
+  for (const requirement of REQUIREMENTS) {
+    const option = element('option', undefined, requirement.label)
+    option.value = requirement.id
+    requirementInput.append(option)
+  }
+  labeled('requirement-input', '表記が要るか(配布元の規約)', requirementInput)
+  const fixedDetails = element('details', 'fixed-details')
+  fixedDetails.append(element('summary', undefined, '配布元が書き方を決めているとき'))
+  const fixedHelp = element('p', undefined, '決まった文をそのまま貼ってください。入れると、この素材は上の欄から作る行の代わりに、この文のまま出ます。')
+  fixedHelp.className = 'help'
+  fixedDetails.append(fixedHelp)
+  const fixedInput = labeled('fixed-input', '指定の表記文', element('textarea'), fixedDetails)
+  fixedInput.rows = 3
+  form.append(fixedDetails)
   const submitButton = button('submit-button', '追加')
   submitButton.type = 'submit'
   submitButton.className = 'primary'
@@ -145,6 +177,12 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   const itemCount = element('span', 'item-count')
   itemCount.className = 'count'
   listHeading.append(itemCount)
+  const useActions = element('div')
+  useActions.className = 'actions use-actions'
+  useActions.append(
+    button('use-all', 'すべて使う', () => changeState(setInUse(state, null, true))),
+    button('use-none', 'すべて外す', () => changeState(setInUse(state, null, false))),
+  )
   const list = element('ul')
   list.className = 'materials'
   const hint = emptyHint()
@@ -171,7 +209,7 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
   backupActions.append(exportButton, importButton, importInput)
   const backupStatus = element('p', 'backup-status')
   backupStatus.setAttribute('role', 'status')
-  listCard.append(listHeading, hint, list, backupActions, backupStatus)
+  listCard.append(listHeading, hint, useActions, list, backupActions, backupStatus)
   inputColumn.append(win('new-material', form), win('materials/', listCard))
 
   const outputCard = element('div')
@@ -191,12 +229,24 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
     templateFieldset.append(label)
     return radio
   })
+  const honorificLabel = element('label')
+  honorificLabel.className = 'toggle'
+  const honorificInput = element('input', 'honorific')
+  honorificInput.type = 'checkbox'
+  honorificInput.addEventListener('change', () => changeState(setHonorific(state, honorificInput.checked)))
+  honorificLabel.append(honorificInput, document.createTextNode('ショップ・作者名に「様」を付ける'))
+  templateFieldset.append(honorificLabel)
   const outputHeading = element('h2', undefined, 'クレジット文')
   const output = element('textarea', 'output')
   output.readOnly = true
+  output.placeholder = '登録して「今回使う」に印を付けた素材が、ここに並びます。'
   output.setAttribute('aria-label', 'クレジット文')
   const charCount = element('p', 'char-count')
   charCount.className = 'status-bar'
+  const useSummary = element('p', 'use-summary')
+  useSummary.className = 'status-bar'
+  const unknownHint = element('p', 'unknown-hint')
+  unknownHint.className = 'hint'
   const angleWarning = element('p', 'angle-warning', '「<」「>」は YouTube の概要欄に入れられません。素材名・ショップ名から外してください。')
   angleWarning.className = 'warning'
   const copyStatus = element('p', 'copy-status')
@@ -214,7 +264,7 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
     copyStatus.textContent = success ? 'コピーしました' : 'コピーできませんでした。出力欄を選んでコピーしてください'
     if (success) copyTimer = setTimeout(() => { copyStatus.textContent = '' }, 2000)
   })
-  outputCard.append(templateFieldset, outputHeading, output, charCount, angleWarning, copyButton, copyStatus)
+  outputCard.append(templateFieldset, outputHeading, output, charCount, useSummary, unknownHint, angleWarning, copyButton, copyStatus)
   outputColumn.append(win('credits.txt', outputCard))
   columns.append(inputColumn, outputColumn)
   root.replaceChildren(appHeader(), warning, columns, appFooter())
@@ -223,11 +273,28 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
     formError.textContent = ''
     formError.hidden = true
   }
+  function readForm(): MaterialInput {
+    return {
+      category: categoryInput.value,
+      name: nameInput.value,
+      shop: shopInput.value,
+      url: urlInput.value,
+      fixedText: fixedInput.value,
+      requirement: requirementInput.value as Requirement,
+    }
+  }
+  function fillForm(input: MaterialInput): void {
+    categoryInput.value = input.category
+    nameInput.value = input.name
+    shopInput.value = input.shop
+    urlInput.value = input.url
+    fixedInput.value = input.fixedText
+    requirementInput.value = input.requirement
+    fixedDetails.open = input.fixedText !== ''
+  }
   function resetForm(): void {
     editingId = null
-    nameInput.value = ''
-    shopInput.value = ''
-    urlInput.value = ''
+    fillForm({ category: '', name: '', shop: '', url: '', fixedText: '', requirement: 'unknown' })
     submitButton.textContent = '追加'
     cancelButton.hidden = true
     clearError()
@@ -243,10 +310,38 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
     state.materials.forEach((material, index) => {
       const row = element('li', 'item-row')
       row.dataset.id = material.id
-      const name = element('p', 'item-name', material.name)
-      name.className = 'material-name'
-      row.append(name, element('p', 'item-shop', material.shop))
+      row.dataset.inUse = String(material.inUse)
+      const top = element('div')
+      top.className = 'row-top'
+      const useLabel = element('label')
+      useLabel.className = 'use'
+      const useInput = element('input', 'item-inuse')
+      useInput.type = 'checkbox'
+      useInput.checked = material.inUse
+      useInput.setAttribute('aria-label', `${material.name}を今回使う`)
+      useInput.addEventListener('change', () => changeState(setInUse(state, material.id, useInput.checked)))
+      useLabel.append(useInput, document.createTextNode('今回使う'))
+      const badge = element('span', 'item-requirement', `表記: ${requirementLabel(material.requirement)}`)
+      badge.className = 'badge'
+      badge.dataset.requirement = material.requirement
+      top.append(useLabel, badge)
+      row.append(top)
+      const nameLine = element('p')
+      nameLine.className = 'material-name'
+      if (material.category) {
+        const category = element('span', 'item-category', material.category)
+        category.className = 'category'
+        nameLine.append(category)
+      }
+      nameLine.append(element('span', 'item-name', material.name))
+      row.append(nameLine)
+      if (material.shop) row.append(element('p', 'item-shop', material.shop))
       if (material.url) row.append(element('p', 'item-url', material.url))
+      if (material.fixedText) {
+        const fixed = element('pre', 'item-fixed', material.fixedText)
+        fixed.className = 'fixed'
+        row.append(fixed)
+      }
       const up = button('move-up', '▲', () => changeState(moveMaterial(state, material.id, -1)))
       up.disabled = index === 0
       up.setAttribute('aria-label', `${material.name}を1つ上へ`)
@@ -255,9 +350,7 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
       down.setAttribute('aria-label', `${material.name}を1つ下へ`)
       const edit = button('edit', '編集', () => {
         editingId = material.id
-        nameInput.value = material.name
-        shopInput.value = material.shop
-        urlInput.value = material.url
+        fillForm(material)
         submitButton.textContent = '更新'
         cancelButton.hidden = false
         clearError()
@@ -274,20 +367,28 @@ export function mountApp(root: HTMLElement, deps: AppDeps): void {
       row.append(actions)
       list.append(row)
     })
+    const used = state.materials.filter(material => material.inUse)
     itemCount.textContent = `${state.materials.length} 件`
     hint.hidden = state.materials.length > 0
+    useActions.hidden = state.materials.length === 0
     exportButton.disabled = state.materials.length === 0
     radios.forEach(radio => { radio.checked = radio.value === state.templateId })
-    output.value = renderCredits(state.materials, state.templateId)
+    honorificInput.checked = state.honorific
+    output.value = renderCredits(state.materials, state.templateId, { honorific: state.honorific })
     const count = countChars(output.value)
     charCount.textContent = `${count} / ${MAX_DESCRIPTION} 文字`
     charCount.dataset.over = String(count > MAX_DESCRIPTION)
+    useSummary.textContent = `今回使う素材 ${used.length} 件 / 登録 ${state.materials.length} 件`
+    useSummary.hidden = state.materials.length === 0
+    const unknown = used.filter(material => material.requirement === 'unknown').length
+    unknownHint.textContent = `表記が要るか未確認の素材が ${unknown} 件あります。配布元の規約を確かめて「表記が要るか」を選んでおくと、次から迷いません。`
+    unknownHint.hidden = unknown === 0
     angleWarning.hidden = !/[<>]/.test(output.value)
   }
 
   form.addEventListener('submit', event => {
     event.preventDefault()
-    const input = { name: nameInput.value, shop: shopInput.value, url: urlInput.value }
+    const input = readForm()
     const result = editingId === null ? addMaterial(state, input, deps.newId) : updateMaterial(state, editingId, input)
     if (!result.ok) {
       formError.textContent = inputErrors[result.error]

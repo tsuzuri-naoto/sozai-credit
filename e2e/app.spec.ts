@@ -3,9 +3,11 @@ import { expect, test, type Page } from '@playwright/test'
 
 const A = { name: 'ゆるふわ立ち絵セット', shop: 'ねこ工房', url: 'https://booth.pm/ja/items/1234567' }
 const B = { name: '夜のBGM集', shop: 'おとや', url: '' }
-const standard = '【使用素材】\n・ゆるふわ立ち絵セット / ねこ工房 様\nhttps://booth.pm/ja/items/1234567\n・夜のBGM集 / おとや 様'
-const oneline = '【使用素材】\n・ゆるふわ立ち絵セット(ねこ工房 様) https://booth.pm/ja/items/1234567\n・夜のBGM集(おとや 様)'
-const byshop = '【使用素材】\n■ねこ工房 様\n・ゆるふわ立ち絵セット\nhttps://booth.pm/ja/items/1234567\n■おとや 様\n・夜のBGM集'
+const standard = '【使用素材】\n・ゆるふわ立ち絵セット / ねこ工房\nhttps://booth.pm/ja/items/1234567\n・夜のBGM集 / おとや'
+const oneline = '【使用素材】\n・ゆるふわ立ち絵セット(ねこ工房) https://booth.pm/ja/items/1234567\n・夜のBGM集(おとや)'
+const byshop = '【使用素材】\n■ねこ工房\n・ゆるふわ立ち絵セット\nhttps://booth.pm/ja/items/1234567\n■おとや\n・夜のBGM集'
+// 1 版の書き出しファイルは「様」付きのまま読み込まれる
+const onelineSama = '【使用素材】\n・ゆるふわ立ち絵セット(ねこ工房 様) https://booth.pm/ja/items/1234567\n・夜のBGM集(おとや 様)'
 const backup = JSON.stringify({ app: 'sozai-credit', format: 1, exportedAt: '2026-10-11T00:05:00.000Z', state: { version: 1, materials: [{ id: 'a', ...A }, { id: 'b', ...B }], templateId: 'oneline' } })
 
 async function add(page: Page, material: typeof A): Promise<void> {
@@ -46,7 +48,7 @@ test('validation errors', async ({ page }) => {
   await page.getByTestId('submit-button').click()
   await expect(page.getByTestId('form-error')).toHaveText('素材名を入力してください')
   await add(page, { name: 'A', shop: 'B', url: 'abc' })
-  await expect(page.getByTestId('form-error')).toHaveText('URL は http:// か https:// で始めてください')
+  await expect(page.getByTestId('form-error')).toHaveText('リンクは http:// か https:// で始まる URL か、@ で始まる X の名前にしてください')
   await expect(page.getByTestId('item-row')).toHaveCount(0)
 })
 test('url normalized', async ({ page }) => {
@@ -66,10 +68,10 @@ test('edit delete move', async ({ page }) => {
   await page.getByTestId('item-row').nth(0).getByTestId('edit').click()
   await page.getByTestId('name-input').fill('A2')
   await page.getByTestId('submit-button').click()
-  expect((await page.getByTestId('output').inputValue()).split('\n')[1]).toBe('・A2 / ねこ工房 様')
+  expect((await page.getByTestId('output').inputValue()).split('\n')[1]).toBe('・A2 / ねこ工房')
   await expect(page.getByTestId('submit-button')).toHaveText('追加')
   await page.getByTestId('item-row').nth(1).getByTestId('delete').click()
-  await expect(page.getByTestId('output')).toHaveValue('【使用素材】\n・A2 / ねこ工房 様\nhttps://booth.pm/ja/items/1234567')
+  await expect(page.getByTestId('output')).toHaveValue('【使用素材】\n・A2 / ねこ工房\nhttps://booth.pm/ja/items/1234567')
 })
 test('template switch', async ({ page }) => {
   await page.goto('/')
@@ -138,7 +140,8 @@ test('import replaces after confirm', async ({ page }) => {
   await importText(page)
   await expect(page.getByTestId('item-name')).toHaveText([A.name, B.name])
   await expect(page.getByTestId('template-oneline')).toBeChecked()
-  await expect(page.getByTestId('output')).toHaveValue(oneline)
+  await expect(page.getByTestId('honorific')).toBeChecked()
+  await expect(page.getByTestId('output')).toHaveValue(onelineSama)
   await expect(page.getByTestId('backup-status')).toHaveText('読み込みました(2 件)')
   await page.reload()
   await expect(page.getByTestId('item-row')).toHaveCount(2)

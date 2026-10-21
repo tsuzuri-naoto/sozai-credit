@@ -16,7 +16,10 @@ test('storage unavailable', () => {
   }
 })
 test('storage round trip', () => {
-  const state: AppState = { version: 1, materials: [{ id: 'a', name: 'A', shop: 'S1', url: '' }, { id: 'b', name: 'B', shop: 'S2', url: 'https://example.com' }], templateId: 'byshop' }
+  const state: AppState = { version: 2, materials: [
+    { id: 'a', category: 'BGM', name: 'A', shop: 'S1', url: '', fixedText: '', requirement: 'required', inUse: true },
+    { id: 'b', category: '', name: 'B', shop: 'S2', url: '@b', fixedText: 'B: S2', requirement: 'none', inUse: false },
+  ], templateId: 'bycategory', honorific: true }
   const storage = createStorage(mapBackend())
   expect(storage.available).toBe(true)
   storage.save(state)
@@ -32,7 +35,7 @@ test('storage discards broken data', () => {
   }
   const backend = mapBackend()
   backend.setItem(STORAGE_KEY, '{"version":1,"materials":[{"id":"a","name":"A","shop":"S","url":""},{"id":1}],"templateId":"zzz"}')
-  expect(createStorage(backend).load()).toEqual({ version: 1, materials: [{ id: 'a', name: 'A', shop: 'S', url: '' }], templateId: 'standard' })
+  expect(createStorage(backend).load()).toEqual({ version: 2, materials: [{ id: 'a', category: '', name: 'A', shop: 'S', url: '', fixedText: '', requirement: 'unknown', inUse: true }], templateId: 'standard', honorific: true })
 })
 
 test('storage reports save failure after successful probe', () => {

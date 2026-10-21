@@ -1,8 +1,9 @@
 import { sanitizeState, type AppState } from './model'
 
 export const BACKUP_APP = 'sozai-credit'
-export const BACKUP_FORMAT = 1
-export type BackupFile = { app: 'sozai-credit'; format: 1; exportedAt: string; state: AppState }
+// 2 = 区分・表記の要否・指定の表記文・今回使うか・「様」の有無を足した版。1 版のファイルも読める。
+export const BACKUP_FORMAT = 2
+export type BackupFile = { app: 'sozai-credit'; format: 2; exportedAt: string; state: AppState }
 export type BackupError = 'invalid-json' | 'not-backup'
 
 export function serializeBackup(state: AppState, now: Date): string {
@@ -18,7 +19,8 @@ export function parseBackup(text: string, newId: () => string): { ok: true; valu
   }
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: 'not-backup' }
   const data = raw as Record<string, unknown>
-  if (data.app !== BACKUP_APP || data.format !== BACKUP_FORMAT) return { ok: false, error: 'not-backup' }
+  if (data.app !== BACKUP_APP || (data.format !== 1 && data.format !== 2)) return { ok: false, error: 'not-backup' }
+  if (data.state === null || typeof data.state !== 'object' || (data.state as Record<string, unknown>).version !== data.format) return { ok: false, error: 'not-backup' }
   const state = sanitizeState(data.state)
   if (state === null) return { ok: false, error: 'not-backup' }
   const rawState = data.state as { materials: unknown[] }
